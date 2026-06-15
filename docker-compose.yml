@@ -1,0 +1,19 @@
+services:
+  orion:
+    image: fiware/orion:3.10.1
+    ports: ["1026:1026"]
+    depends_on: [mongo]
+    command: -dbhost mongo
+  mongo:
+    image: mongo:6.0
+    volumes: ["mongo-data:/data/db"]
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883", "9001:9001"]
+    volumes: ["./mosquitto.conf:/mosquitto/config/mosquitto.conf"]
+  nodered:
+    image: nodered/node-red:latest
+    ports: ["1880:1880"]
+    depends_on: [orion, mosquitto]
+volumes:
+  mongo-data:
