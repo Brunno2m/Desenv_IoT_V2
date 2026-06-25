@@ -1,0 +1,136 @@
+[
+  {
+    "id": "e81d18809e5b53f6",
+    "type": "tab",
+    "label": "Gêmeo Digital - Mineração",
+    "disabled": false,
+    "info": "",
+    "env": []
+  },
+  {
+    "id": "mqtt_broker_config",
+    "type": "mqtt-broker",
+    "name": "Mosquitto Docker",
+    "broker": "mosquitto",
+    "port": "1883",
+    "clientid": "nodered_client",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "no_mqtt_in",
+    "type": "mqtt in",
+    "z": "e81d18809e5b53f6",
+    "name": "Receber Telemetria",
+    "topic": "mineracao/+/+/telemetria",
+    "qos": "0",
+    "datatype": "json",
+    "broker": "mqtt_broker_config",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 130,
+    "y": 140,
+    "wires": [
+      [
+        "no_funcao_regra"
+      ]
+    ]
+  },
+  {
+    "id": "no_funcao_regra",
+    "type": "function",
+    "z": "e81d18809e5b53f6",
+    "name": "Calcular Média e Regra de Ventilação",
+    "func": "let topicParts = msg.topic.split('/');\nlet zona = topicParts[1]; \nlet telemetria = msg.payload;\n\nlet estadoZonas = flow.get('estadoZonas') || {};\n\nif (!estadoZonas[zona]) {\n    estadoZonas[zona] = {\n        leituras_ch4: {},\n        leituras_co: {}\n    };\n}\n\nif (telemetria.tipo_dado === 'CH4') {\n    estadoZonas[zona].leituras_ch4[telemetria.sensor_id] = telemetria.valor;\n} else if (telemetria.tipo_dado === 'CO') {\n    estadoZonas[zona].leituras_co[telemetria.sensor_id] = telemetria.valor;\n}\n\nlet valoresCH4 = Object.values(estadoZonas[zona].leituras_ch4);\nlet mediaCH4 = 0;\n\nif (valoresCH4.length > 0) {\n    let soma = valoresCH4.reduce((acc, val) => acc + val, 0);\n    mediaCH4 = soma / valoresCH4.length;\n}\n\nlet statusVentilacao = \"DESLIGADO\";\nif (mediaCH4 >= 1.0) {\n    statusVentilacao = \"LIGADO_100% - ALERTA VERMELHO\";\n} else if (mediaCH4 >= 0.5) {\n    statusVentilacao = \"LIGADO_50% - ALERTA AMARELO\";\n} else {\n    statusVentilacao = \"MODO_ECONOMIA - VENTILACAO MINIMA\";\n}\n\nflow.set('estadoZonas', estadoZonas);\n\nmsg.payload = {\n    \"actionType\": \"append\",\n    \"entities\": [\n        {\n            \"id\": `urn:ngsi-ld:ZonaMineracao:${zona}`,\n            \"type\": \"ZonaMineracao\",\n            \"media_ch4\": { \"type\": \"Float\", \"value\": parseFloat(mediaCH4.toFixed(2)) },\n            \"status_ventilacao\": { \"type\": \"Text\", \"value\": statusVentilacao },\n            \"data_atualizacao\": {\n                \"type\": \"DateTime\",\n                \"value\": new Date().toISOString()\n            }\n        }\n    ]\n};\n\nmsg.headers = {\n    \"Content-Type\": \"application/json\"\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 450,
+    "y": 140,
+    "wires": [
+      [
+        "no_http_orion",
+        "no_debug"
+      ]
+    ]
+  },
+  {
+    "id": "no_http_orion",
+    "type": "http request",
+    "z": "e81d18809e5b53f6",
+    "name": "Enviar para Orion (NGSIv2)",
+    "method": "POST",
+    "ret": "obj",
+    "paytoqs": "ignore",
+    "url": "http://orion:1026/v2/op/update",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 800,
+    "y": 140,
+    "wires": [
+      [
+        "no_debug_resposta"
+      ]
+    ]
+  },
+  {
+    "id": "no_debug",
+    "type": "debug",
+    "z": "e81d18809e5b53f6",
+    "name": "Verificar Payload gerado",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 790,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "no_debug_resposta",
+    "type": "debug",
+    "z": "e81d18809e5b53f6",
+    "name": "Resposta do Orion",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1070,
+    "y": 140,
+    "wires": []
+  }
+]
